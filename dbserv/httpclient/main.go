@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 )
 
 const serverPort = 3333
@@ -33,12 +34,15 @@ func main() {
 
 	requestURL := fmt.Sprintf("http://localhost:%d/test?id=1234", serverPort)
 	req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
-
 	if err != nil {
 		fmt.Printf("error making http request: %s\n", err)
 		os.Exit(1)
 	}
-	res, err := http.DefaultClient.Do(req)
+	req.Header.Set("Content-Type", "application/json")
+	client := http.Client{
+		Timeout: 30 * time.Second,
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("client: error making http request: %s\n", err)
 		os.Exit(1)
