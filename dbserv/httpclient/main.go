@@ -32,7 +32,7 @@ func main() {
 	jsonBody := []byte(`{"client_message": "hello, server!"}`)
 	bodyReader := bytes.NewReader(jsonBody)
 
-	requestURL := fmt.Sprintf("http://localhost:%d/test?id=1234", serverPort)
+	requestURL := fmt.Sprintf("http://localhost:%d/jwt", serverPort)
 	req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
 	if err != nil {
 		fmt.Printf("error making http request: %s\n", err)
