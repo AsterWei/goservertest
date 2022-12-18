@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,11 +14,17 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	jwt "github.com/golang-jwt/jwt/v4"
 )
 
 const serverPort = 3333
 
 const keyServerAddr = "serverAddr"
+
+type JWTRequest struct {
+	ClientMessage string `json:"client_message"`
+}
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -79,11 +87,92 @@ func getJWT(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("server: could not read request body: %s\n", err)
 	}
-	fmt.Printf("server: request body %s\n", reqBody)
-	fmt.Fprintf(w, `{"message" : "JWT todoita!"}`)
+	fmt.Fprintf(w, `{"message": "JWT todoita!"}`)
+	var reqdata JWTRequest
+	json.Unmarshal(reqBody, &reqdata)
+	fmt.Printf("server: client message %s \n", reqdata.ClientMessage)
+	tokenString := reqdata.ClientMessage
+
+	testkey := "1234"
+	parts := strings.Split(tokenString, ".")
+	method := jwt.GetSigningMethod("HS256")
+	err2 := method.Verify(strings.Join(parts[0:2], "."), parts[2], []byte(testkey))
+	if err2 != nil {
+		fmt.Printf("Error while verifying key: %v", err2)
+	} else {
+		fmt.Println("Correct key")
+	}
+	// if err2 == nil {
+	// 	fmt.Errorf("Invalid key passed validation")
+	// }
+}
+
+type memberRef struct {
+	ref string
+}
+
+// func run will be responsible for setting up db connections, routers etc
+func run() error {
+	//// I'm used to working with postgres, but feel free to use any db you like. You just have to change the driver
+	//// I'm not going to cover how to create a database here but create a database
+	//// and call it something along the lines of "weight tracker"
+	connectionString := "root:123456@tcp(localhost:3306)/abac"
+
+	// setup database connection
+	db, err := setupSQLDatabase("mysql", connectionString)
+
+	if err != nil {
+		return err
+	}
+
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+
+		}
+	}(db)
+
+	// router := gin.Default()
+	// router.Use(cors.Default())
+
+	// server := app.NewServer(router, db)
+
+	// err = server.Run()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func setupSQLDatabase(driverName string, connString string) (*sql.DB, error) {
+	// change "postgres" for whatever supported database you want to use
+	db, err := sql.Open(driverName, connString)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// ping the DB to ensure that it is connected
+	err = db.Ping()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func main() {
+	// if err := run(); err != nil {
+	// 	_, err := fmt.Fprintf(os.Stderr, "this is the startup error: %s\\n", err)
+	// 	if err != nil {
+	// 		return
+	// 	}
+	// 	os.Exit(1)
+	// }
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", getRoot)
 	mux.HandleFunc("/hello", getHello)
