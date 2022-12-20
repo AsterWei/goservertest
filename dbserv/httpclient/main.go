@@ -29,10 +29,10 @@ func main() {
 	// 	}
 	// }()
 	// time.Sleep(100 * time.Millisecond)
-	jsonBody := []byte(`{"client_message": "hello, server!"}`)
+	jsonBody := []byte(`{"user_id": "dbtest", "tbl_name":"user_attrs", "db_access_date": "2022-12-20"}`)
 	bodyReader := bytes.NewReader(jsonBody)
 
-	requestURL := fmt.Sprintf("http://localhost:%d/jwt", serverPort)
+	requestURL := fmt.Sprintf("http://localhost:%d/test", serverPort)
 	req, err := http.NewRequest(http.MethodPost, requestURL, bodyReader)
 	if err != nil {
 		fmt.Printf("error making http request: %s\n", err)

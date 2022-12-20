@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	jwt "github.com/golang-jwt/jwt/v4"
 )
 
@@ -24,6 +25,14 @@ const keyServerAddr = "serverAddr"
 
 type JWTRequest struct {
 	ClientMessage string `json:"client_message"`
+}
+
+type UserAttrs struct {
+	Attrs string
+}
+
+type Server struct {
+	conn *sql.DB
 }
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +102,7 @@ func getJWT(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("server: client message %s \n", reqdata.ClientMessage)
 	tokenString := reqdata.ClientMessage
 
-	testkey := "1234"
+	testkey := "123"
 	parts := strings.Split(tokenString, ".")
 	method := jwt.GetSigningMethod("HS256")
 	err2 := method.Verify(strings.Join(parts[0:2], "."), parts[2], []byte(testkey))
@@ -102,13 +111,22 @@ func getJWT(w http.ResponseWriter, r *http.Request) {
 	} else {
 		fmt.Println("Correct key")
 	}
-	// if err2 == nil {
-	// 	fmt.Errorf("Invalid key passed validation")
-	// }
-}
 
-type memberRef struct {
-	ref string
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Don't forget to validate the alg is what you expect:
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(testkey), nil
+	})
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		fmt.Printf("%+v \n", claims)
+		fmt.Println(claims["sub"])
+	} else {
+		fmt.Println(err)
+	}
+
 }
 
 // func run will be responsible for setting up db connections, routers etc
@@ -139,10 +157,17 @@ func run() error {
 
 	// err = server.Run()
 
+	// if err != nil {
+	// 	return err
+	// }
+	id := "Aster"
+	sqlTemp := "SELECT attrs FROM user_attrs WHERE user_id=?"
+	var tmpattrs UserAttrs
+	err = db.QueryRow(sqlTemp, id).Scan(&tmpattrs.Attrs)
 	if err != nil {
 		return err
 	}
-
+	fmt.Println(tmpattrs.Attrs)
 	return nil
 }
 
@@ -165,13 +190,13 @@ func setupSQLDatabase(driverName string, connString string) (*sql.DB, error) {
 }
 
 func main() {
-	// if err := run(); err != nil {
-	// 	_, err := fmt.Fprintf(os.Stderr, "this is the startup error: %s\\n", err)
-	// 	if err != nil {
-	// 		return
-	// 	}
-	// 	os.Exit(1)
-	// }
+	if err := run(); err != nil {
+		_, err := fmt.Fprintf(os.Stderr, "this is the startup error: %s\\n", err)
+		if err != nil {
+			return
+		}
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", getRoot)
