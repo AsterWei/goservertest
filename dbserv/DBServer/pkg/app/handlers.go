@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -464,6 +466,7 @@ func (s *Server) FindDevActions() gin.HandlerFunc {
 }
 
 func (s *Server) FindDBAccess() gin.HandlerFunc {
+	fmt.Println("here find db access")
 	return func(context *gin.Context) {
 		context.Header("Content-Type", "application/json")
 
@@ -471,11 +474,11 @@ func (s *Server) FindDBAccess() gin.HandlerFunc {
 		table_name := context.Param("table_name")
 
 		res, err := s.conn.Query(FindAccessDateQuery, user_id, table_name)
-		fmt.Printf("query temp: %v, params: %v, %v\n", FindDevActionsQuery, user_id, table_name)
+		fmt.Printf("query temp: %v, params: %v, %v\n", FindAccessDateQuery, user_id, table_name)
 
 		if err != nil {
 			fmt.Printf("Unable to execute sql_query, template: %v, params: %v, %v, err: %v\n",
-				FindDevActionsQuery, user_id, table_name, err)
+				FindAccessDateQuery, user_id, table_name, err)
 			context.JSON(http.StatusBadRequest, nil)
 			return
 		}
@@ -691,7 +694,7 @@ func (s *Server) UpdateSecureDBDeny() gin.HandlerFunc {
 	}
 }
 
-func (s *Server) sendJWT() gin.HandleFunc {
+func (s *Server) SendJWT() gin.HandlerFunc {
 	return func(context *gin.Context) {
 		context.Header("Content-Type", "application/json")
 
@@ -704,7 +707,6 @@ func (s *Server) sendJWT() gin.HandleFunc {
 
 		var reqdata JWTRequest
 		json.Unmarshal(reqBody, &reqdata)
-		fmt.Printf("server: client message %s \n", reqdata.ClientMessage)
 		tokenString := reqdata.ClientMessage
 
 		testkey := "123"
@@ -727,12 +729,123 @@ func (s *Server) sendJWT() gin.HandleFunc {
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			fmt.Printf("%+v \n", claims)
-			fmt.Println(claims["sub"])
+			// fmt.Println(claims["sub"])
+			s.accessDateUpdate(claims["user"].(string), claims["sub"].(string))
+			context.String(http.StatusOK, `{"server_message": "JWT received!"}`)
 		} else {
 			fmt.Println(err)
+			context.String(http.StatusBadRequest, `{"server_message": "wrong JWT signature!"}`)
 		}
-		context.String(http.StatusOK, `{"message": "JWT todoita!"}`)
-
 	}
 
+}
+
+func (s *Server) accessDateUpdate(user_id string, dbauth string) {
+	//parse dbauth
+	list := strings.Split(dbauth, ",")
+	mp := make(map[string]string)
+	for _, line := range list {
+		kv := strings.Split(line, ":")
+		mp[kv[0]] = kv[1]
+	}
+	fmt.Println("%+v", mp)
+	//query date
+	for tbl, element := range mp {
+		res, err := s.conn.Query(FindAccessDateQuery, user_id, tbl)
+		fmt.Printf("query temp: %v, params: %v, %v\n", FindAccessDateQuery, user_id, tbl)
+
+		if err != nil {
+			fmt.Printf("Unable to execute sql_query, template: %v, params: %v, %v, err: %v\n",
+				FindAccessDateQuery, user_id, tbl, err)
+			return
+		}
+
+		defer func(res *sql.Rows) {
+			err := res.Close()
+			if err != nil {
+				fmt.Printf("close res err: %v\n", err)
+			}
+		}(res)
+
+		var result DBAccess
+
+		if res.Next() {
+			if err := res.Scan(&result.User_id, &result.Table_name, &result.Db_access_date, &result.Db_deny_date); err != nil {
+				fmt.Printf("scan err: %v\n", err)
+				return
+			}
+		} else {
+			fmt.Printf("empty query result\n")
+			return
+		}
+
+		fmt.Printf("actions: %+v\n", result)
+
+		//update date
+		days := 0
+		if strings.Contains(element, "always") {
+			days = 9999
+		} else if strings.Contains(element, "once") {
+			days = 0
+		} else {
+			re := regexp.MustCompile("[0-9]+")
+			days, err = strconv.Atoi(re.FindAllString(element, -1)[0])
+			if err != nil {
+				days = 0
+			}
+		}
+		// fmt.Println(days)
+		if strings.Contains(element, "allow") {
+			newallowdate, _ := time.Parse("2006-01-02", result.Db_access_date)
+			newallowdate = time.Now().AddDate(0, 0, days)
+			fmt.Println("new allow date : %v", newallowdate.Format("2006-01-02"))
+			ctx, cancelfunc := sqlctx.WithTimeout(sqlctx.Background(), 5*time.Second)
+			defer cancelfunc()
+			stmt, err := s.conn.PrepareContext(ctx, UpdateSecureDBAllowQuery)
+			if err != nil {
+				fmt.Printf("Error %s when preparing SQL statement", err)
+				return
+			}
+			defer stmt.Close()
+
+			res, err := stmt.ExecContext(ctx, newallowdate.Format("2006-01-02"), &result.User_id, &result.Table_name)
+			if err != nil {
+				fmt.Printf("Error %s when inserting row into products table", err)
+				return
+			}
+			rows, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("Error %s when finding rows affected", err)
+				return
+			}
+
+			log.Printf("%d rows inserted ", rows)
+		} else {
+			newdenydate, _ := time.Parse("2006-01-02", result.Db_deny_date)
+			newdenydate = time.Now().AddDate(0, 0, days)
+			fmt.Println("new deny date : %v", newdenydate.Format("2006-01-02"))
+			ctx, cancelfunc := sqlctx.WithTimeout(sqlctx.Background(), 5*time.Second)
+			defer cancelfunc()
+			stmt, err := s.conn.PrepareContext(ctx, UpdateSecureDBDenyQuery)
+			if err != nil {
+				fmt.Printf("Error %s when preparing SQL statement", err)
+				return
+			}
+			defer stmt.Close()
+
+			res, err := stmt.ExecContext(ctx, newdenydate.Format("2006-01-02"), &result.User_id, &result.Table_name)
+			if err != nil {
+				fmt.Printf("Error %s when inserting row into products table", err)
+				return
+			}
+			rows, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("Error %s when finding rows affected", err)
+				return
+			}
+
+			log.Printf("%d rows inserted ", rows)
+		}
+
+	}
 }

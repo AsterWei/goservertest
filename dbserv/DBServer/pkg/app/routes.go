@@ -14,7 +14,7 @@ func (s *Server) Routes() *gin.Engine {
 
 	v2 := router.Group("/find_db_access")
 	{
-		v2.GET("/:usesr_id/:table_name", s.FindDBAccess())
+		v2.GET("/:user_id/:table_name", s.FindDBAccess())
 	}
 
 	// router.POST("/test", s.DBTest())
@@ -62,7 +62,7 @@ func (s *Server) Routes() *gin.Engine {
 
 	router.POST("/update_db_deny", s.UpdateSecureDBDeny())
 
-	router.GET("/jwt", s.SendJWT())
+	router.POST("/jwt", s.SendJWT())
 
 	return router
 }
