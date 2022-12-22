@@ -7,9 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type Mapkey struct {
+	User_id    string
+	Table_name string
+}
 type Server struct {
-	router *gin.Engine
-	conn   *sql.DB
+	router     *gin.Engine
+	conn       *sql.DB
+	allow_once map[Mapkey]bool
 }
 
 func NewServer(router *gin.Engine, conn *sql.DB) *Server {

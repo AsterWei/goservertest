@@ -54,7 +54,7 @@ func (s *Server) Routes() *gin.Engine {
 		v11.GET("/:dev_id", s.FindDevAttrs())
 	}
 
-	router.POST("/insert_policy", s.InsertPolicy())
+	router.POST("/insert_user_attrs", s.InsertPolicy())
 
 	router.POST("/insert_perm_info", s.InsertPermInfo())
 
